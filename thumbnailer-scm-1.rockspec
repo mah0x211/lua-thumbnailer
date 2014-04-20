@@ -1,7 +1,7 @@
 package = "thumbnailer"
 version = "scm-1"
 source = {
-    url = "https://github.com/mah0x211/lua-thumbnailer.git"
+    url = "git://github.com/mah0x211/lua-thumbnailer.git"
 }
 description = {
     summary = "thumbnail generator",
