@@ -232,6 +232,17 @@ static int save_lua( lua_State *L )
 }
 
 
+static int rawsize_lua( lua_State *L )
+{
+    context_t *ctx = (context_t*)luaL_checkudata( L, 1, MODULE_MT );
+    
+    lua_pushinteger( L, ctx->size.w );
+    lua_pushinteger( L, ctx->size.h );
+    
+    return 2;
+}
+
+
 static int size_lua( lua_State *L )
 {
     context_t *ctx = (context_t*)luaL_checkudata( L, 1, MODULE_MT );
@@ -385,6 +396,7 @@ LUALIB_API int luaopen_thumbnailer( lua_State *L )
     };
     struct luaL_Reg method[] = {
         // method
+        { "rawsize", rawsize_lua },
         { "size", size_lua },
         { "quality", quality_lua },
         { "resize", resize_lua },
