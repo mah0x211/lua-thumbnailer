@@ -232,23 +232,30 @@ static int save_lua( lua_State *L )
 }
 
 
-static int width_lua( lua_State *L )
+static int size_lua( lua_State *L )
 {
     context_t *ctx = (context_t*)luaL_checkudata( L, 1, MODULE_MT );
     
-    lua_pushnumber( L, ctx->size.w );
+    if( !lua_isnoneornil( L, 2 ) )
+    {
+        int width = luaL_checkint( L, 2 );
+        int height = luaL_checkint( L, 3 );
+        
+        if( width < 0 ){
+            luaL_argerror( L, 2, "width must be larger than 0" );
+        }
+        else if( height < 0 ){
+            luaL_argerror( L, 3, "height must be larger than 0" );
+        }
+        
+        ctx->resize.w = width;
+        ctx->resize.h = height;
+    }
     
-    return 1;
-}
-
-
-static int height_lua( lua_State *L )
-{
-    context_t *ctx = (context_t*)luaL_checkudata( L, 1, MODULE_MT );
+    lua_pushinteger( L, ctx->resize.w );
+    lua_pushinteger( L, ctx->resize.h );
     
-    lua_pushnumber( L, ctx->size.h );
-    
-    return 1;
+    return 2;
 }
 
 
@@ -378,8 +385,7 @@ LUALIB_API int luaopen_thumbnailer( lua_State *L )
     };
     struct luaL_Reg method[] = {
         // method
-        { "width", width_lua },
-        { "height", height_lua },
+        { "size", size_lua },
         { "quality", quality_lua },
         { "resize", resize_lua },
         { "save", save_lua },
