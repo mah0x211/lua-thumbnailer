@@ -67,7 +67,7 @@ typedef struct {
 } img_size_t;
 
 typedef struct {
-    Imlib_Image img;
+    DATA32 *img;
     int quality;
     int align;
     int crop;
@@ -174,54 +174,53 @@ static int save_lua( lua_State *L )
     context_t *ctx = (context_t*)luaL_checkudata( L, 1, MODULE_MT );
     const char *path = luaL_checkstring( L, 2 );
     Imlib_Load_Error err = IMLIB_LOAD_ERROR_NONE;
-    Imlib_Image work = ctx->img;
-    img_size_t src = { ctx->size.w, ctx->size.h };
+    Imlib_Image work = imlib_create_image_using_data( ctx->size.w, ctx->size.h,
+                                                      ctx->img );
     double aspect_org = (double)ctx->size.w/(double)ctx->size.h;
-    double aspect = (double)ctx->resize.w/(double)ctx->resize.h;
     int x = 0;
     int y = 0;
 
     // set current image
     imlib_context_set_image( work );
-    // clone current image for backup
-    ctx->img = imlib_clone_image();
     
     // crop
     if( ctx->crop )
     {
+        double aspect = (double)ctx->resize.w/(double)ctx->resize.h;
+        img_size_t crop;
+        
         if( aspect_org > aspect )
         {
-            src.w = (int)((double)ctx->size.h * aspect);
-            src.h = ctx->size.h;
+            crop.w = (int)((double)ctx->size.h * aspect);
+            crop.h = ctx->size.h;
             if( ctx->align & ( 1 << IMG_ALIGN_CENTER ) ){
-                x = ( ctx->size.w - src.w ) / 2;
+                x = ( ctx->size.w - crop.w ) / 2;
             }
             else if( ctx->align & ( 1 << IMG_ALIGN_RIGHT ) ){
-                x = ctx->size.w - src.w;
+                x = ctx->size.w - crop.w;
             }
         }
         else if( aspect_org < aspect )
         {
-            src.h = (int)((double)ctx->size.w / aspect);
-            src.w = ctx->size.w;
+            crop.h = (int)((double)ctx->size.w / aspect);
+            crop.w = ctx->size.w;
             if( ctx->align & ( 1 << IMG_ALIGN_MIDDLE ) ){
-                y = ( ctx->size.h - src.h ) / 2;
+                y = ( ctx->size.h - crop.h ) / 2;
             }
             else if( ctx->align & ( 1 << IMG_ALIGN_BOTTOM ) ){
-                y = ctx->size.h - src.h;
+                y = ctx->size.h - crop.h;
             }
         }
+        work = imlib_create_cropped_scaled_image( x, y, crop.w, crop.h, 
+                                                  ctx->resize.w, ctx->resize.h );
+        imlib_free_image();
+        imlib_context_set_image( work );
     }
-    
-    work = imlib_create_cropped_scaled_image( x, y, src.w, src.h, 
-                                              ctx->resize.w, ctx->resize.h );
-    imlib_free_image_and_decache();
-    imlib_context_set_image( work );
     
     // quality
     imlib_image_attach_data_value( "quality", NULL, ctx->quality, NULL );    
     imlib_save_image_with_error_return( path, (ImlibLoadError*)&err );
-    imlib_free_image_and_decache();
+    imlib_free_image();
     // failed
     if( err ){
         liberr2errno( err );
@@ -275,14 +274,11 @@ static int quality_lua( lua_State *L )
 
 static int dealloc_gc( lua_State *L )
 {
-    if( imlib_context_get_image() )
-    {
-        if( imlib_get_cache_size() ){
-            imlib_free_image_and_decache();
-        }
-        else {
-            imlib_free_image();
-        }
+    context_t *ctx = (context_t*)lua_touserdata( L, 1 );
+    
+    if( ctx->img ){
+        free( ctx->img );
+        ctx->img = NULL;
     }
     
     return 0;
@@ -304,36 +300,39 @@ static int load_lua( lua_State *L )
     if( ctx )
     {
         Imlib_Load_Error err = IMLIB_LOAD_ERROR_NONE;
+        Imlib_Image img = imlib_load_image_with_error_return( path, &err );
         
-        if( imlib_context_get_image() )
+        if( img )
         {
-            if( imlib_get_cache_size() ){
-                imlib_free_image_and_decache();
-            }
-            else {
-                imlib_free_image();
-            }
-        }
-        
-        ctx->img = imlib_load_image_with_error_return( path, &err );
-        if( ctx->img )
-        {
-            ctx->quality = 100;
-            ctx->crop = 0;
-            ctx->align = IMG_ALIGN_NONE;
-            ctx->resize = (img_size_t){ 0, 0 };
-            imlib_context_set_image( ctx->img );
+            size_t bytes = sizeof( DATA32 );
+            
+            imlib_context_set_image( img );
             ctx->size.w =  imlib_image_get_width();
             ctx->size.h = imlib_image_get_height();
-            ctx->img = imlib_clone_image();
+            // allocate buffer
+            bytes *= (size_t)ctx->size.w * (size_t)ctx->size.h;
+            ctx->img = malloc( bytes );
+            if( ctx->img ){
+                memcpy( ctx->img, imlib_image_get_data_for_reading_only(), 
+                        bytes );
+                imlib_free_image_and_decache();
+                
+                ctx->quality = 100;
+                ctx->crop = 0;
+                ctx->align = IMG_ALIGN_NONE;
+                ctx->resize = (img_size_t){ 0, 0 };
+                // set metatable
+                luaL_getmetatable( L, MODULE_MT );
+                lua_setmetatable( L, -2 );
+                
+                return 1;
+            }
+            
             imlib_free_image_and_decache();
-            // set metatable
-            luaL_getmetatable( L, MODULE_MT );
-            lua_setmetatable( L, -2 );
-            return 1;
         }
-        
-        liberr2errno( err );
+        else {
+            liberr2errno( err );
+        }
     }
     
     // got error
