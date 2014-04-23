@@ -443,7 +443,6 @@ static int save_aspect_lua( lua_State *L )
 }
 
 
-
 static int rawsize_lua( lua_State *L )
 {
     context_t *ctx = (context_t*)luaL_checkudata( L, 1, MODULE_MT );
@@ -497,13 +496,25 @@ static int quality_lua( lua_State *L )
 }
 
 
+static int free_lua( lua_State *L )
+{
+    context_t *ctx = (context_t*)luaL_checkudata( L, 1, MODULE_MT );
+    
+    if( ctx->img ){
+        free( ctx->img );
+        ctx->img = NULL;
+    }
+    
+    return 0;
+}
+
+
 static int dealloc_gc( lua_State *L )
 {
     context_t *ctx = (context_t*)lua_touserdata( L, 1 );
     
     if( ctx->img ){
         free( ctx->img );
-        ctx->img = NULL;
     }
     
     return 0;
@@ -602,6 +613,7 @@ LUALIB_API int luaopen_thumbnailer( lua_State *L )
     };
     struct luaL_Reg method[] = {
         // method
+        { "free", free_lua },
         { "rawsize", rawsize_lua },
         { "size", size_lua },
         { "quality", quality_lua },
