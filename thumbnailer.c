@@ -329,6 +329,121 @@ static int save_trim_lua( lua_State *L )
 }
 
 
+static int save_aspect_lua( lua_State *L )
+{
+    context_t *ctx = (context_t*)luaL_checkudata( L, 1, MODULE_MT );
+    const char *path = luaL_checkstring( L, 2 );
+    uint8_t align = IMG_ALIGN_NONE;
+    lua_Integer halign = IMG_ALIGN_CENTER;
+    lua_Integer valign = IMG_ALIGN_MIDDLE;
+    float hue = 0;
+    float saturation = 0;
+    float lightness = 0;
+    int alpha = 255;
+    img_bounds_t bounds = (img_bounds_t){ 0, 0, 0, 0 };
+    double aspect_org = 0;
+    double aspect = 0;
+    ImlibLoadError err = IMLIB_LOAD_ERROR_NONE;
+    Imlib_Image work = NULL;
+    Imlib_Image boundsImage = NULL;
+
+    
+    // check arguments
+    // hue
+    if( !lua_isnoneornil( L, 3 ) ){
+        lua_Number arg = luaL_checknumber( L, 3 );
+        SETVAL_IN_RANGE( hue, float, arg, 0, 360 );
+    }
+    // saturation
+    if( !lua_isnoneornil( L, 4 ) ){
+        lua_Number arg = luaL_checknumber( L, 4 );
+        SETVAL_IN_RANGE( saturation, float, arg, 0, 1 );
+    }
+    // lightness
+    if( !lua_isnoneornil( L, 5 ) ){
+        lua_Number arg = luaL_checknumber( L, 5 );
+        SETVAL_IN_RANGE( lightness, float, arg, 0, 1 );
+    }
+    // alpha
+    if( !lua_isnoneornil( L, 6 ) ){
+        lua_Integer arg = luaL_checkinteger( L, 6 );
+        SETVAL_IN_RANGE( alpha, int, arg, 0, 255 );
+    }
+    // horizontal
+    if( !lua_isnoneornil( L, 7 ) )
+    {
+        halign = (uint8_t)luaL_checkint( L, 7 );
+        if( halign < IMG_ALIGN_LEFT || halign > IMG_ALIGN_RIGHT ){
+            return luaL_argerror( L, 7, "horizontal align must be LEFT, RIGHT or CENTER" );
+        }
+    }
+    // vertical
+    if( !lua_isnoneornil( L, 8 ) )
+    {
+        valign = (uint8_t)luaL_checkinteger( L, 8 );
+        if( valign < IMG_ALIGN_TOP || valign > IMG_ALIGN_BOTTOM ){
+            return luaL_argerror( L, 4, "vertical align must be TOP, BOTTOM or MIDDLE" );
+        }
+    }
+    
+    
+    // calculate bounds of image with maintaining aspect ratio
+    aspect_org = (double)ctx->size.w/(double)ctx->size.h;
+    aspect = (double)ctx->resize.w/(double)ctx->resize.h;
+    // based on width
+    if( aspect_org > aspect ){
+        bounds.w = ctx->resize.w;
+        bounds.h = (int)((double)bounds.w / aspect_org);
+        align = (uint8_t)valign;
+    }
+    // based on height
+    else if( aspect_org < aspect ){
+        bounds.h = ctx->resize.h;
+        bounds.w = (int)((double)bounds.h * aspect_org);
+        align = (uint8_t)halign;
+    }
+    // square
+    else {
+        bounds.w = ctx->resize.w;
+        bounds.h = ctx->resize.h;
+    }
+    // calculate bounds position
+    BOUNDS_ALIGN( bounds, align, ctx->resize );
+    
+    // create image
+    work = imlib_create_image_using_data( ctx->size.w, ctx->size.h, ctx->img );
+    // set current image
+    imlib_context_set_image( work );
+    work = imlib_create_cropped_scaled_image( 0, 0, ctx->size.w, ctx->size.h, 
+                                              bounds.w, bounds.h );
+    imlib_free_image();
+    boundsImage = imlib_create_image( ctx->resize.w, ctx->resize.h );
+    imlib_context_set_image( boundsImage );
+    imlib_context_set_color_hlsa( hue, lightness, saturation, alpha );
+    imlib_image_fill_rectangle( 0, 0, ctx->resize.w, ctx->resize.h );
+    imlib_blend_image_onto_image( work, 0, 0, 0, bounds.w, bounds.h, bounds.x, 
+                                  bounds.y, bounds.w, bounds.h );
+    imlib_context_set_image( work );
+    imlib_free_image();
+    imlib_context_set_image( boundsImage );
+    save2path( path, ctx->quality, &err );
+    
+    // failed
+    if( err ){
+        liberr2errno( err );
+        lua_pushboolean( L, 0 );
+        lua_pushstring( L, strerror(errno) );
+        return 2;
+    }
+    
+    // success
+    lua_pushboolean( L, 1 );
+    
+    return 1;
+}
+
+
+
 static int rawsize_lua( lua_State *L )
 {
     context_t *ctx = (context_t*)luaL_checkudata( L, 1, MODULE_MT );
@@ -493,6 +608,7 @@ LUALIB_API int luaopen_thumbnailer( lua_State *L )
         { "save", save_lua },
         { "saveCrop", save_crop_lua },
         { "saveTrim", save_trim_lua },
+        { "saveAspect", save_aspect_lua },
         { NULL, NULL }
     };
     
