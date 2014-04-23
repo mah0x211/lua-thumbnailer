@@ -339,12 +339,13 @@ LUALIB_API int luaopen_thumbnailer( lua_State *L )
     lua_newtable( L );
     lstate_fn2tbl( L, "load", load_lua );
     // constants
-    lstate_num2tbl( L, "ALIGN_LEFT", IMG_ALIGN_LEFT );
-    lstate_num2tbl( L, "ALIGN_CENTER", IMG_ALIGN_CENTER );
-    lstate_num2tbl( L, "ALIGN_RIGHT", IMG_ALIGN_RIGHT );
-    lstate_num2tbl( L, "ALIGN_TOP", IMG_ALIGN_TOP );
-    lstate_num2tbl( L, "ALIGN_MIDDLE", IMG_ALIGN_MIDDLE );
-    lstate_num2tbl( L, "ALIGN_BOTTOM", IMG_ALIGN_BOTTOM );
+    // alignments
+    lstate_num2tbl( L, "LEFT", IMG_ALIGN_LEFT );
+    lstate_num2tbl( L, "CENTER", IMG_ALIGN_CENTER );
+    lstate_num2tbl( L, "RIGHT", IMG_ALIGN_RIGHT );
+    lstate_num2tbl( L, "TOP", IMG_ALIGN_TOP );
+    lstate_num2tbl( L, "MIDDLE", IMG_ALIGN_MIDDLE );
+    lstate_num2tbl( L, "BOTTOM", IMG_ALIGN_BOTTOM );
     
     return 1;
 }
