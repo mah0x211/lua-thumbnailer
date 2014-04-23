@@ -162,7 +162,7 @@ static inline void save2path( const char *path, uint8_t quality, ImlibLoadError 
     // set quality
     imlib_image_attach_data_value( "quality", NULL, quality, NULL );
     imlib_save_image_with_error_return( path, err );
-    imlib_free_image();
+    imlib_free_image_and_decache();
 }
 
 
@@ -178,7 +178,7 @@ static int save_lua( lua_State *L )
     imlib_context_set_image( work );
     work = imlib_create_cropped_scaled_image( 0, 0, ctx->size.w, ctx->size.h, 
                                               ctx->resize.w, ctx->resize.h );
-    imlib_free_image();
+    imlib_free_image_and_decache();
     imlib_context_set_image( work );
     save2path( path, ctx->quality, &err );
     // failed
@@ -256,7 +256,7 @@ static int save_crop_lua( lua_State *L )
     work = imlib_create_cropped_scaled_image( bounds.x, bounds.y, bounds.w, 
                                               bounds.h, ctx->resize.w, 
                                               ctx->resize.h );
-    imlib_free_image();
+    imlib_free_image_and_decache();
     imlib_context_set_image( work );
     save2path( path, ctx->quality, &err );
     
@@ -310,7 +310,7 @@ static int save_trim_lua( lua_State *L )
     imlib_context_set_image( work );
     work = imlib_create_cropped_scaled_image( 0, 0, ctx->size.w, ctx->size.h, 
                                               bounds.w, bounds.h );
-    imlib_free_image();
+    imlib_free_image_and_decache();
     imlib_context_set_image( work );
     save2path( path, ctx->quality, &err );
     
@@ -416,7 +416,7 @@ static int save_aspect_lua( lua_State *L )
     imlib_context_set_image( work );
     work = imlib_create_cropped_scaled_image( 0, 0, ctx->size.w, ctx->size.h, 
                                               bounds.w, bounds.h );
-    imlib_free_image();
+    imlib_free_image_and_decache();
     boundsImage = imlib_create_image( ctx->resize.w, ctx->resize.h );
     imlib_context_set_image( boundsImage );
     imlib_context_set_color_hlsa( hue, lightness, saturation, alpha );
@@ -424,7 +424,7 @@ static int save_aspect_lua( lua_State *L )
     imlib_blend_image_onto_image( work, 0, 0, 0, bounds.w, bounds.h, bounds.x, 
                                   bounds.y, bounds.w, bounds.h );
     imlib_context_set_image( work );
-    imlib_free_image();
+    imlib_free_image_and_decache();
     imlib_context_set_image( boundsImage );
     save2path( path, ctx->quality, &err );
     
