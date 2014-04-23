@@ -30,6 +30,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <stdint.h>
 #include <Imlib2.h>
 #include <lauxlib.h>
 
@@ -58,7 +59,7 @@ enum img_align_e {
     IMG_ALIGN_RIGHT,
     IMG_ALIGN_TOP,
     IMG_ALIGN_MIDDLE,
-    IMG_ALIGN_BOTTOM,
+    IMG_ALIGN_BOTTOM
 };
 
 typedef struct {
@@ -68,12 +69,25 @@ typedef struct {
 
 typedef struct {
     DATA32 *img;
-    int quality;
     int align;
     int crop;
     img_size_t size;
     img_size_t resize;
+    uint8_t quality;
 } context_t;
+
+
+#define SETVAL_IN_RANGE(x,t,val,min,max) do { \
+    if( val < min ){ \
+        (x) = (t)min; \
+    } \
+    else if( val > max ){ \
+        (x) = (t)max; \
+    } \
+    else { \
+        (x) = (t)val; \
+    } \
+}while(0)
 
 
 static inline void liberr2errno( int err )
@@ -274,14 +288,9 @@ static int quality_lua( lua_State *L )
 {
     context_t *ctx = (context_t*)luaL_checkudata( L, 1, MODULE_MT );
     
-    if( !lua_isnoneornil( L, 2 ) )
-    {
+    if( !lua_isnoneornil( L, 2 ) ){
         int quality = luaL_checkint( L, 2 );
-        
-        if( quality < 0 ){
-            luaL_argerror( L, 2, "quality must be larger than 0" );
-        }
-        ctx->quality = quality;
+        SETVAL_IN_RANGE( ctx->quality, uint8_t, quality, 0, 100 );
     }
     
     lua_pushinteger( L, ctx->quality );
