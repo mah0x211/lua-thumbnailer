@@ -77,7 +77,8 @@ typedef struct {
 
 
 typedef struct {
-    DATA32 *img;
+    void *blob;
+    size_t bytes;
     img_size_t size;
     img_size_t resize;
     uint8_t quality;
@@ -172,7 +173,7 @@ static int save_lua( lua_State *L )
     const char *path = luaL_checkstring( L, 2 );
     ImlibLoadError err = IMLIB_LOAD_ERROR_NONE;
     Imlib_Image work = imlib_create_image_using_data( ctx->size.w, ctx->size.h,
-                                                      ctx->img );
+                                                      ctx->blob );
     
     // set current image
     imlib_context_set_image( work );
@@ -251,7 +252,7 @@ static int save_crop_lua( lua_State *L )
     BOUNDS_ALIGN( bounds, align, ctx->size );
     
     // create image
-    work = imlib_create_image_using_data( ctx->size.w, ctx->size.h, ctx->img );
+    work = imlib_create_image_using_data( ctx->size.w, ctx->size.h, ctx->blob );
     imlib_context_set_image( work );
     work = imlib_create_cropped_scaled_image( bounds.x, bounds.y, bounds.w, 
                                               bounds.h, ctx->resize.w, 
@@ -305,7 +306,7 @@ static int save_trim_lua( lua_State *L )
     }
     
     // create image
-    work = imlib_create_image_using_data( ctx->size.w, ctx->size.h, ctx->img );
+    work = imlib_create_image_using_data( ctx->size.w, ctx->size.h, ctx->blob );
     // set current image
     imlib_context_set_image( work );
     work = imlib_create_cropped_scaled_image( 0, 0, ctx->size.w, ctx->size.h, 
@@ -411,7 +412,7 @@ static int save_aspect_lua( lua_State *L )
     BOUNDS_ALIGN( bounds, align, ctx->resize );
     
     // create image
-    work = imlib_create_image_using_data( ctx->size.w, ctx->size.h, ctx->img );
+    work = imlib_create_image_using_data( ctx->size.w, ctx->size.h, ctx->blob );
     // set current image
     imlib_context_set_image( work );
     work = imlib_create_cropped_scaled_image( 0, 0, ctx->size.w, ctx->size.h, 
@@ -500,9 +501,9 @@ static int free_lua( lua_State *L )
 {
     context_t *ctx = (context_t*)luaL_checkudata( L, 1, MODULE_MT );
     
-    if( ctx->img ){
-        free( ctx->img );
-        ctx->img = NULL;
+    if( ctx->blob ){
+        free( ctx->blob );
+        ctx->blob = NULL;
     }
     
     return 0;
@@ -513,8 +514,8 @@ static int dealloc_gc( lua_State *L )
 {
     context_t *ctx = (context_t*)lua_touserdata( L, 1 );
     
-    if( ctx->img ){
-        free( ctx->img );
+    if( ctx->blob ){
+        free( ctx->blob );
     }
     
     return 0;
@@ -540,17 +541,16 @@ static int load_lua( lua_State *L )
         
         if( img )
         {
-            size_t bytes = sizeof( DATA32 );
-            
             imlib_context_set_image( img );
             ctx->size.w =  imlib_image_get_width();
             ctx->size.h = imlib_image_get_height();
             // allocate buffer
-            bytes *= (size_t)ctx->size.w * (size_t)ctx->size.h;
-            ctx->img = malloc( bytes );
-            if( ctx->img ){
-                memcpy( ctx->img, imlib_image_get_data_for_reading_only(), 
-                        bytes );
+            ctx->bytes = sizeof( DATA32 ) * (size_t)ctx->size.w * 
+                        (size_t)ctx->size.h;
+            ctx->blob = malloc( ctx->bytes );
+            if( ctx->blob ){
+                memcpy( ctx->blob, imlib_image_get_data_for_reading_only(), 
+                        ctx->bytes );
                 imlib_free_image_and_decache();
                 
                 ctx->quality = 100;
