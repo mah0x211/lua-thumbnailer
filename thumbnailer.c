@@ -200,29 +200,31 @@ static int save_crop_lua( lua_State *L )
 {
     context_t *ctx = (context_t*)luaL_checkudata( L, 1, MODULE_MT );
     const char *path = luaL_checkstring( L, 2 );
-    lua_Integer halign = luaL_checkinteger( L, 3 );
-    lua_Integer valign = luaL_checkinteger( L, 4 );
+    uint8_t align = IMG_ALIGN_NONE;
+    uint8_t halign = IMG_ALIGN_CENTER;
+    uint8_t valign = IMG_ALIGN_MIDDLE;
     img_bounds_t bounds = (img_bounds_t){ 0, 0, 0, 0 };
     double aspect_org = 0;
     double aspect = 0;
-    uint8_t align = 0;
     Imlib_Image work = NULL;
     ImlibLoadError err = IMLIB_LOAD_ERROR_NONE;
     
     // check alignment arguments
     // horizontal
-    if( !halign ){
-        halign = IMG_ALIGN_LEFT;
-    }
-    else if( halign < IMG_ALIGN_LEFT || halign > IMG_ALIGN_RIGHT ){
-        return luaL_argerror( L, 3, "horizontal align must be LEFT, RIGHT or CENTER" );
+    if( !lua_isnoneornil( L, 3 ) )
+    {
+        halign = (uint8_t)luaL_checkint( L, 3 );
+        if( halign < IMG_ALIGN_LEFT || halign > IMG_ALIGN_RIGHT ){
+            return luaL_argerror( L, 3, "horizontal align must be LEFT, RIGHT or CENTER" );
+        }
     }
     // vertical
-    if( !valign ){
-        valign = IMG_ALIGN_TOP;
-    }
-    else if( valign < IMG_ALIGN_TOP || valign > IMG_ALIGN_BOTTOM ){
-        return luaL_argerror( L, 4, "vertical align must be TOP, BOTTOM or MIDDLE" );
+    if( !lua_isnoneornil( L, 4 ) )
+    {
+        valign = (uint8_t)luaL_checkinteger( L, 4 );
+        if( valign < IMG_ALIGN_TOP || valign > IMG_ALIGN_BOTTOM ){
+            return luaL_argerror( L, 4, "vertical align must be TOP, BOTTOM or MIDDLE" );
+        }
     }
     
     // calculate bounds of cropped image by aspect ratio
