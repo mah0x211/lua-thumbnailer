@@ -186,13 +186,13 @@ static int save_lua( lua_State *L )
         liberr2errno( err );
         lua_pushboolean( L, 0 );
         lua_pushstring( L, strerror(errno) );
-        return 1;
+        return 2;
     }
     
     // success
     lua_pushboolean( L, 1 );
     
-    return 0;
+    return 1;
 }
 
 
@@ -263,13 +263,13 @@ static int save_crop_lua( lua_State *L )
         liberr2errno( err );
         lua_pushboolean( L, 0 );
         lua_pushstring( L, strerror(errno) );
-        return 1;
+        return 2;
     }
     
     // success
     lua_pushboolean( L, 1 );
     
-    return 0;
+    return 1;
 }
 
 
