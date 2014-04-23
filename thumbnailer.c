@@ -275,6 +275,60 @@ static int save_crop_lua( lua_State *L )
 }
 
 
+static int save_trim_lua( lua_State *L )
+{
+    context_t *ctx = (context_t*)luaL_checkudata( L, 1, MODULE_MT );
+    const char *path = luaL_checkstring( L, 2 );
+    img_bounds_t bounds = (img_bounds_t){ 0, 0, 0, 0 };
+    double aspect_org = 0;
+    double aspect = 0;
+    ImlibLoadError err = IMLIB_LOAD_ERROR_NONE;
+    Imlib_Image work = NULL;
+    
+    // calculate bounds of image with maintaining aspect ratio.
+    aspect_org = (double)ctx->size.w/(double)ctx->size.h;
+    aspect = (double)ctx->resize.w/(double)ctx->resize.h;
+    // based on width
+    if( aspect_org > aspect ){
+        bounds.w = ctx->resize.w;
+        bounds.h = (int)((double)bounds.w / aspect_org);
+    }
+    // based on height
+    else if( aspect_org < aspect ){
+        bounds.h = ctx->resize.h;
+        bounds.w = (int)((double)bounds.h * aspect_org);
+    }
+    // square
+    else {
+        bounds.w = ctx->resize.w;
+        bounds.h = ctx->resize.h;
+    }
+    
+    // create image
+    work = imlib_create_image_using_data( ctx->size.w, ctx->size.h, ctx->img );
+    // set current image
+    imlib_context_set_image( work );
+    work = imlib_create_cropped_scaled_image( 0, 0, ctx->size.w, ctx->size.h, 
+                                              bounds.w, bounds.h );
+    imlib_free_image();
+    imlib_context_set_image( work );
+    save2path( path, ctx->quality, &err );
+    
+    // failed
+    if( err ){
+        liberr2errno( err );
+        lua_pushboolean( L, 0 );
+        lua_pushstring( L, strerror(errno) );
+        return 2;
+    }
+    
+    // success
+    lua_pushboolean( L, 1 );
+    
+    return 1;
+}
+
+
 static int rawsize_lua( lua_State *L )
 {
     context_t *ctx = (context_t*)luaL_checkudata( L, 1, MODULE_MT );
@@ -438,6 +492,7 @@ LUALIB_API int luaopen_thumbnailer( lua_State *L )
         { "quality", quality_lua },
         { "save", save_lua },
         { "saveCrop", save_crop_lua },
+        { "saveTrim", save_trim_lua },
         { NULL, NULL }
     };
     
