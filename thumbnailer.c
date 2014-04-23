@@ -67,6 +67,15 @@ typedef struct {
     int h;
 } img_size_t;
 
+
+typedef struct {
+    int x;
+    int y;
+    int w;
+    int h;
+} img_bounds_t;
+
+
 typedef struct {
     DATA32 *img;
     img_size_t size;
@@ -84,6 +93,24 @@ typedef struct {
     } \
     else { \
         (x) = (t)val; \
+    } \
+}while(0)
+
+
+#define BOUNDS_ALIGN(bounds,align,size) do{ \
+    switch( align ){ \
+        case IMG_ALIGN_CENTER: \
+            bounds.x = ( size.w - bounds.w ) / 2; \
+        break; \
+        case IMG_ALIGN_RIGHT: \
+            bounds.x = size.w - bounds.w; \
+        break; \
+        case IMG_ALIGN_MIDDLE: \
+            bounds.y = ( size.h - bounds.h ) / 2; \
+        break; \
+        case IMG_ALIGN_BOTTOM: \
+            bounds.y = size.h - bounds.h; \
+        break; \
     } \
 }while(0)
 
@@ -154,6 +181,83 @@ static int save_lua( lua_State *L )
     imlib_free_image();
     imlib_context_set_image( work );
     save2path( path, ctx->quality, &err );
+    // failed
+    if( err ){
+        liberr2errno( err );
+        lua_pushboolean( L, 0 );
+        lua_pushstring( L, strerror(errno) );
+        return 1;
+    }
+    
+    // success
+    lua_pushboolean( L, 1 );
+    
+    return 0;
+}
+
+
+static int save_crop_lua( lua_State *L )
+{
+    context_t *ctx = (context_t*)luaL_checkudata( L, 1, MODULE_MT );
+    const char *path = luaL_checkstring( L, 2 );
+    lua_Integer halign = luaL_checkinteger( L, 3 );
+    lua_Integer valign = luaL_checkinteger( L, 4 );
+    img_bounds_t bounds = (img_bounds_t){ 0, 0, 0, 0 };
+    double aspect_org = 0;
+    double aspect = 0;
+    uint8_t align = 0;
+    Imlib_Image work = NULL;
+    ImlibLoadError err = IMLIB_LOAD_ERROR_NONE;
+    
+    // check alignment arguments
+    // horizontal
+    if( !halign ){
+        halign = IMG_ALIGN_LEFT;
+    }
+    else if( halign < IMG_ALIGN_LEFT || halign > IMG_ALIGN_RIGHT ){
+        return luaL_argerror( L, 3, "horizontal align must be LEFT, RIGHT or CENTER" );
+    }
+    // vertical
+    if( !valign ){
+        valign = IMG_ALIGN_TOP;
+    }
+    else if( valign < IMG_ALIGN_TOP || valign > IMG_ALIGN_BOTTOM ){
+        return luaL_argerror( L, 4, "vertical align must be TOP, BOTTOM or MIDDLE" );
+    }
+    
+    // calculate bounds of cropped image by aspect ratio
+    aspect_org = (double)ctx->size.w/(double)ctx->size.h;
+    aspect = (double)ctx->resize.w/(double)ctx->resize.h;
+    // based on height
+    if( aspect_org > aspect ){
+        bounds.h = ctx->size.h;
+        bounds.w = (int)((double)ctx->size.h * aspect);
+        align = (uint8_t)halign;
+    }
+    // based on width
+    else if( aspect_org < aspect ){
+        bounds.w = ctx->size.w;
+        bounds.h = (int)((double)ctx->size.w / aspect);
+        align = (uint8_t)valign;
+    }
+    // square
+    else {
+        bounds.w = ctx->size.w;
+        bounds.h = ctx->size.h;
+    }
+    // calculate bounds position
+    BOUNDS_ALIGN( bounds, align, ctx->size );
+    
+    // create image
+    work = imlib_create_image_using_data( ctx->size.w, ctx->size.h, ctx->img );
+    imlib_context_set_image( work );
+    work = imlib_create_cropped_scaled_image( bounds.x, bounds.y, bounds.w, 
+                                              bounds.h, ctx->resize.w, 
+                                              ctx->resize.h );
+    imlib_free_image();
+    imlib_context_set_image( work );
+    save2path( path, ctx->quality, &err );
+    
     // failed
     if( err ){
         liberr2errno( err );
@@ -331,6 +435,7 @@ LUALIB_API int luaopen_thumbnailer( lua_State *L )
         { "size", size_lua },
         { "quality", quality_lua },
         { "save", save_lua },
+        { "saveCrop", save_crop_lua },
         { NULL, NULL }
     };
     
