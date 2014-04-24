@@ -82,7 +82,7 @@ typedef struct {
     img_size_t size;
     img_size_t resize;
     uint8_t quality;
-} context_t;
+} img_t;
 
 
 #define SETVAL_IN_RANGE(x,t,val,min,max) do { \
@@ -158,6 +158,37 @@ static inline void liberr2errno( int err )
 }
 
 
+static int img_load( img_t *img, const char *path )
+{
+    Imlib_Load_Error err = IMLIB_LOAD_ERROR_NONE;
+    Imlib_Image imimg = imlib_load_image_with_error_return( path, &err );
+    
+    if( img )
+    {
+        imlib_context_set_image( imimg );
+        img->size.w =  imlib_image_get_width();
+        img->size.h = imlib_image_get_height();
+        // allocate buffer
+        img->bytes = sizeof( DATA32 ) * (size_t)img->size.w * (size_t)img->size.h;
+        img->blob = malloc( img->bytes );
+        if( img->blob ){
+            memcpy( img->blob, imlib_image_get_data_for_reading_only(), 
+                    img->bytes );
+            imlib_free_image_and_decache();
+            
+            img->quality = 100;
+            img->resize = (img_size_t){ 0, 0 };
+            return 0;
+        }
+        
+        imlib_free_image_and_decache();
+    }
+    
+    liberr2errno( err );
+    return -1;
+}
+
+
 static inline void save2path( const char *path, uint8_t quality, ImlibLoadError *err )
 {
     // set quality
@@ -169,19 +200,19 @@ static inline void save2path( const char *path, uint8_t quality, ImlibLoadError 
 
 static int save_lua( lua_State *L )
 {
-    context_t *ctx = (context_t*)luaL_checkudata( L, 1, MODULE_MT );
+    img_t *img = (img_t*)luaL_checkudata( L, 1, MODULE_MT );
     const char *path = luaL_checkstring( L, 2 );
     ImlibLoadError err = IMLIB_LOAD_ERROR_NONE;
-    Imlib_Image work = imlib_create_image_using_data( ctx->size.w, ctx->size.h,
-                                                      ctx->blob );
+    Imlib_Image work = imlib_create_image_using_data( img->size.w, img->size.h,
+                                                      img->blob );
     
     // set current image
     imlib_context_set_image( work );
-    work = imlib_create_cropped_scaled_image( 0, 0, ctx->size.w, ctx->size.h, 
-                                              ctx->resize.w, ctx->resize.h );
+    work = imlib_create_cropped_scaled_image( 0, 0, img->size.w, img->size.h, 
+                                              img->resize.w, img->resize.h );
     imlib_free_image_and_decache();
     imlib_context_set_image( work );
-    save2path( path, ctx->quality, &err );
+    save2path( path, img->quality, &err );
     // failed
     if( err ){
         liberr2errno( err );
@@ -199,7 +230,7 @@ static int save_lua( lua_State *L )
 
 static int save_crop_lua( lua_State *L )
 {
-    context_t *ctx = (context_t*)luaL_checkudata( L, 1, MODULE_MT );
+    img_t *img = (img_t*)luaL_checkudata( L, 1, MODULE_MT );
     const char *path = luaL_checkstring( L, 2 );
     uint8_t align = IMG_ALIGN_NONE;
     uint8_t halign = IMG_ALIGN_CENTER;
@@ -229,37 +260,37 @@ static int save_crop_lua( lua_State *L )
     }
     
     // calculate bounds of cropped image by aspect ratio
-    aspect_org = (double)ctx->size.w/(double)ctx->size.h;
-    aspect = (double)ctx->resize.w/(double)ctx->resize.h;
+    aspect_org = (double)img->size.w/(double)img->size.h;
+    aspect = (double)img->resize.w/(double)img->resize.h;
     // based on height
     if( aspect_org > aspect ){
-        bounds.h = ctx->size.h;
-        bounds.w = (int)((double)ctx->size.h * aspect);
+        bounds.h = img->size.h;
+        bounds.w = (int)((double)img->size.h * aspect);
         align = (uint8_t)halign;
     }
     // based on width
     else if( aspect_org < aspect ){
-        bounds.w = ctx->size.w;
-        bounds.h = (int)((double)ctx->size.w / aspect);
+        bounds.w = img->size.w;
+        bounds.h = (int)((double)img->size.w / aspect);
         align = (uint8_t)valign;
     }
     // square
     else {
-        bounds.w = ctx->size.w;
-        bounds.h = ctx->size.h;
+        bounds.w = img->size.w;
+        bounds.h = img->size.h;
     }
     // calculate bounds position
-    BOUNDS_ALIGN( bounds, align, ctx->size );
+    BOUNDS_ALIGN( bounds, align, img->size );
     
     // create image
-    work = imlib_create_image_using_data( ctx->size.w, ctx->size.h, ctx->blob );
+    work = imlib_create_image_using_data( img->size.w, img->size.h, img->blob );
     imlib_context_set_image( work );
     work = imlib_create_cropped_scaled_image( bounds.x, bounds.y, bounds.w, 
-                                              bounds.h, ctx->resize.w, 
-                                              ctx->resize.h );
+                                              bounds.h, img->resize.w, 
+                                              img->resize.h );
     imlib_free_image_and_decache();
     imlib_context_set_image( work );
-    save2path( path, ctx->quality, &err );
+    save2path( path, img->quality, &err );
     
     // failed
     if( err ){
@@ -278,7 +309,7 @@ static int save_crop_lua( lua_State *L )
 
 static int save_trim_lua( lua_State *L )
 {
-    context_t *ctx = (context_t*)luaL_checkudata( L, 1, MODULE_MT );
+    img_t *img = (img_t*)luaL_checkudata( L, 1, MODULE_MT );
     const char *path = luaL_checkstring( L, 2 );
     img_bounds_t bounds = (img_bounds_t){ 0, 0, 0, 0 };
     double aspect_org = 0;
@@ -287,33 +318,33 @@ static int save_trim_lua( lua_State *L )
     Imlib_Image work = NULL;
     
     // calculate bounds of image with maintaining aspect ratio.
-    aspect_org = (double)ctx->size.w/(double)ctx->size.h;
-    aspect = (double)ctx->resize.w/(double)ctx->resize.h;
+    aspect_org = (double)img->size.w/(double)img->size.h;
+    aspect = (double)img->resize.w/(double)img->resize.h;
     // based on width
     if( aspect_org > aspect ){
-        bounds.w = ctx->resize.w;
+        bounds.w = img->resize.w;
         bounds.h = (int)((double)bounds.w / aspect_org);
     }
     // based on height
     else if( aspect_org < aspect ){
-        bounds.h = ctx->resize.h;
+        bounds.h = img->resize.h;
         bounds.w = (int)((double)bounds.h * aspect_org);
     }
     // square
     else {
-        bounds.w = ctx->resize.w;
-        bounds.h = ctx->resize.h;
+        bounds.w = img->resize.w;
+        bounds.h = img->resize.h;
     }
     
     // create image
-    work = imlib_create_image_using_data( ctx->size.w, ctx->size.h, ctx->blob );
+    work = imlib_create_image_using_data( img->size.w, img->size.h, img->blob );
     // set current image
     imlib_context_set_image( work );
-    work = imlib_create_cropped_scaled_image( 0, 0, ctx->size.w, ctx->size.h, 
+    work = imlib_create_cropped_scaled_image( 0, 0, img->size.w, img->size.h, 
                                               bounds.w, bounds.h );
     imlib_free_image_and_decache();
     imlib_context_set_image( work );
-    save2path( path, ctx->quality, &err );
+    save2path( path, img->quality, &err );
     
     // failed
     if( err ){
@@ -332,7 +363,7 @@ static int save_trim_lua( lua_State *L )
 
 static int save_aspect_lua( lua_State *L )
 {
-    context_t *ctx = (context_t*)luaL_checkudata( L, 1, MODULE_MT );
+    img_t *img = (img_t*)luaL_checkudata( L, 1, MODULE_MT );
     const char *path = luaL_checkstring( L, 2 );
     uint8_t align = IMG_ALIGN_NONE;
     lua_Integer halign = IMG_ALIGN_CENTER;
@@ -389,45 +420,45 @@ static int save_aspect_lua( lua_State *L )
     
     
     // calculate bounds of image with maintaining aspect ratio
-    aspect_org = (double)ctx->size.w/(double)ctx->size.h;
-    aspect = (double)ctx->resize.w/(double)ctx->resize.h;
+    aspect_org = (double)img->size.w/(double)img->size.h;
+    aspect = (double)img->resize.w/(double)img->resize.h;
     // based on width
     if( aspect_org > aspect ){
-        bounds.w = ctx->resize.w;
+        bounds.w = img->resize.w;
         bounds.h = (int)((double)bounds.w / aspect_org);
         align = (uint8_t)valign;
     }
     // based on height
     else if( aspect_org < aspect ){
-        bounds.h = ctx->resize.h;
+        bounds.h = img->resize.h;
         bounds.w = (int)((double)bounds.h * aspect_org);
         align = (uint8_t)halign;
     }
     // square
     else {
-        bounds.w = ctx->resize.w;
-        bounds.h = ctx->resize.h;
+        bounds.w = img->resize.w;
+        bounds.h = img->resize.h;
     }
     // calculate bounds position
-    BOUNDS_ALIGN( bounds, align, ctx->resize );
+    BOUNDS_ALIGN( bounds, align, img->resize );
     
     // create image
-    work = imlib_create_image_using_data( ctx->size.w, ctx->size.h, ctx->blob );
+    work = imlib_create_image_using_data( img->size.w, img->size.h, img->blob );
     // set current image
     imlib_context_set_image( work );
-    work = imlib_create_cropped_scaled_image( 0, 0, ctx->size.w, ctx->size.h, 
+    work = imlib_create_cropped_scaled_image( 0, 0, img->size.w, img->size.h, 
                                               bounds.w, bounds.h );
     imlib_free_image_and_decache();
-    boundsImage = imlib_create_image( ctx->resize.w, ctx->resize.h );
+    boundsImage = imlib_create_image( img->resize.w, img->resize.h );
     imlib_context_set_image( boundsImage );
     imlib_context_set_color_hlsa( hue, lightness, saturation, alpha );
-    imlib_image_fill_rectangle( 0, 0, ctx->resize.w, ctx->resize.h );
+    imlib_image_fill_rectangle( 0, 0, img->resize.w, img->resize.h );
     imlib_blend_image_onto_image( work, 0, 0, 0, bounds.w, bounds.h, bounds.x, 
                                   bounds.y, bounds.w, bounds.h );
     imlib_context_set_image( work );
     imlib_free_image_and_decache();
     imlib_context_set_image( boundsImage );
-    save2path( path, ctx->quality, &err );
+    save2path( path, img->quality, &err );
     
     // failed
     if( err ){
@@ -446,10 +477,10 @@ static int save_aspect_lua( lua_State *L )
 
 static int rawsize_lua( lua_State *L )
 {
-    context_t *ctx = (context_t*)luaL_checkudata( L, 1, MODULE_MT );
+    img_t *img = (img_t*)luaL_checkudata( L, 1, MODULE_MT );
     
-    lua_pushinteger( L, ctx->size.w );
-    lua_pushinteger( L, ctx->size.h );
+    lua_pushinteger( L, img->size.w );
+    lua_pushinteger( L, img->size.h );
     
     return 2;
 }
@@ -457,7 +488,7 @@ static int rawsize_lua( lua_State *L )
 
 static int size_lua( lua_State *L )
 {
-    context_t *ctx = (context_t*)luaL_checkudata( L, 1, MODULE_MT );
+    img_t *img = (img_t*)luaL_checkudata( L, 1, MODULE_MT );
     
     if( !lua_isnoneornil( L, 2 ) )
     {
@@ -471,12 +502,12 @@ static int size_lua( lua_State *L )
             luaL_argerror( L, 3, "height must be larger than 0" );
         }
         
-        ctx->resize.w = width;
-        ctx->resize.h = height;
+        img->resize.w = width;
+        img->resize.h = height;
     }
     
-    lua_pushinteger( L, ctx->resize.w );
-    lua_pushinteger( L, ctx->resize.h );
+    lua_pushinteger( L, img->resize.w );
+    lua_pushinteger( L, img->resize.h );
     
     return 2;
 }
@@ -484,14 +515,14 @@ static int size_lua( lua_State *L )
 
 static int quality_lua( lua_State *L )
 {
-    context_t *ctx = (context_t*)luaL_checkudata( L, 1, MODULE_MT );
+    img_t *img = (img_t*)luaL_checkudata( L, 1, MODULE_MT );
     
     if( !lua_isnoneornil( L, 2 ) ){
         int quality = luaL_checkint( L, 2 );
-        SETVAL_IN_RANGE( ctx->quality, uint8_t, quality, 0, 100 );
+        SETVAL_IN_RANGE( img->quality, uint8_t, quality, 0, 100 );
     }
     
-    lua_pushinteger( L, ctx->quality );
+    lua_pushinteger( L, img->quality );
     
     return 1;
 }
@@ -499,11 +530,11 @@ static int quality_lua( lua_State *L )
 
 static int free_lua( lua_State *L )
 {
-    context_t *ctx = (context_t*)luaL_checkudata( L, 1, MODULE_MT );
+    img_t *img = (img_t*)luaL_checkudata( L, 1, MODULE_MT );
     
-    if( ctx->blob ){
-        free( ctx->blob );
-        ctx->blob = NULL;
+    if( img->blob ){
+        free( img->blob );
+        img->blob = NULL;
     }
     
     return 0;
@@ -512,10 +543,10 @@ static int free_lua( lua_State *L )
 
 static int dealloc_gc( lua_State *L )
 {
-    context_t *ctx = (context_t*)lua_touserdata( L, 1 );
+    img_t *img = (img_t*)lua_touserdata( L, 1 );
     
-    if( ctx->blob ){
-        free( ctx->blob );
+    if( img->blob ){
+        free( img->blob );
     }
     
     return 0;
@@ -532,42 +563,13 @@ static int tostring_lua( lua_State *L )
 static int load_lua( lua_State *L )
 {
     const char *path = luaL_checkstring( L, 1 );
-    context_t *ctx = lua_newuserdata( L, sizeof( context_t ) );
+    img_t *img = (img_t*)lua_newuserdata( L, sizeof( img_t ) );
     
-    if( ctx )
-    {
-        Imlib_Load_Error err = IMLIB_LOAD_ERROR_NONE;
-        Imlib_Image img = imlib_load_image_with_error_return( path, &err );
-        
-        if( img )
-        {
-            imlib_context_set_image( img );
-            ctx->size.w =  imlib_image_get_width();
-            ctx->size.h = imlib_image_get_height();
-            // allocate buffer
-            ctx->bytes = sizeof( DATA32 ) * (size_t)ctx->size.w * 
-                        (size_t)ctx->size.h;
-            ctx->blob = malloc( ctx->bytes );
-            if( ctx->blob ){
-                memcpy( ctx->blob, imlib_image_get_data_for_reading_only(), 
-                        ctx->bytes );
-                imlib_free_image_and_decache();
-                
-                ctx->quality = 100;
-                ctx->resize = (img_size_t){ 0, 0 };
-                
-                // set metatable
-                luaL_getmetatable( L, MODULE_MT );
-                lua_setmetatable( L, -2 );
-                
-                return 1;
-            }
-            
-            imlib_free_image_and_decache();
-        }
-        else {
-            liberr2errno( err );
-        }
+    if( img && img_load( img, path ) == 0 ){
+        // set metatable
+        luaL_getmetatable( L, MODULE_MT );
+        lua_setmetatable( L, -2 );
+        return 1;
     }
     
     // got error
