@@ -52,6 +52,11 @@
 // MARK: lua binding
 #define MODULE_MT   "thumbnailer"
 
+// default file format
+#define DEFAULT_FORMAT  "png"
+#define MAX_FORMAT_LEN  15
+
+
 enum img_align_e {
     IMG_ALIGN_NONE = 0,
     IMG_ALIGN_LEFT,
@@ -82,6 +87,7 @@ typedef struct {
     img_size_t size;
     img_size_t resize;
     uint8_t quality;
+    char format[MAX_FORMAT_LEN];
 } img_t;
 
 
@@ -158,6 +164,18 @@ static inline void liberr2errno( ImlibLoadError err )
 }
 
 
+static inline int img_format_copy( img_t *img, const char *format, size_t len )
+{
+    if( len < MAX_FORMAT_LEN ){
+        memcpy( img->format, format, len );
+        img->format[len] = 0;
+        return 0;
+    }
+    
+    return -1;
+}
+
+
 static int img_load( img_t *img, const char *path )
 {
     ImlibLoadError err = IMLIB_LOAD_ERROR_NONE;
@@ -171,28 +189,38 @@ static int img_load( img_t *img, const char *path )
         // allocate buffer
         img->bytes = sizeof( DATA32 ) * (size_t)img->size.w * (size_t)img->size.h;
         img->blob = malloc( img->bytes );
-        if( img->blob ){
-            memcpy( img->blob, imlib_image_get_data_for_reading_only(), 
-                    img->bytes );
-            imlib_free_image_and_decache();
+        if( img->blob )
+        {
+            char *format = imlib_image_format();
             
-            img->quality = 100;
-            img->resize = (img_size_t){ 0, 0 };
-            return 0;
+            if( img_format_copy( img, format, strlen( format ) ) == 0 ){
+                memcpy( img->blob, imlib_image_get_data_for_reading_only(), 
+                        img->bytes );
+                imlib_free_image_and_decache();
+                
+                img->quality = 100;
+                img->resize = (img_size_t){ 0, 0 };
+                return 0;
+            }
+            // failed to copy
+            free( img->blob );
         }
         
         imlib_free_image_and_decache();
     }
+    else {
+        liberr2errno( err );
+    }
     
-    liberr2errno( err );
     return -1;
 }
 
 
-static inline void save2path( const char *path, uint8_t quality, ImlibLoadError *err )
+static inline void save2path( img_t *img, const char *path, ImlibLoadError *err )
 {
     // set quality
-    imlib_image_attach_data_value( "quality", NULL, quality, NULL );
+    imlib_image_attach_data_value( "quality", NULL, img->quality, NULL );
+    imlib_image_set_format( img->format );
     imlib_save_image_with_error_return( path, err );
     imlib_free_image_and_decache();
 }
@@ -212,7 +240,7 @@ static int save_lua( lua_State *L )
                                               img->resize.w, img->resize.h );
     imlib_free_image_and_decache();
     imlib_context_set_image( work );
-    save2path( path, img->quality, &err );
+    save2path( img, path, &err );
     // failed
     if( err ){
         liberr2errno( err );
@@ -290,7 +318,7 @@ static int save_crop_lua( lua_State *L )
                                               img->resize.h );
     imlib_free_image_and_decache();
     imlib_context_set_image( work );
-    save2path( path, img->quality, &err );
+    save2path( img, path, &err );
     
     // failed
     if( err ){
@@ -343,7 +371,7 @@ static int save_trim_lua( lua_State *L )
                                               bounds.w, bounds.h );
     imlib_free_image_and_decache();
     imlib_context_set_image( work );
-    save2path( path, img->quality, &err );
+    save2path( img, path, &err );
     
     // failed
     if( err ){
@@ -456,7 +484,7 @@ static int save_aspect_lua( lua_State *L )
     imlib_context_set_image( work );
     imlib_free_image_and_decache();
     imlib_context_set_image( boundsImage );
-    save2path( path, img->quality, &err );
+    save2path( img, path, &err );
     
     // failed
     if( err ){
@@ -541,6 +569,29 @@ static int quality_lua( lua_State *L )
 }
 
 
+static int format_lua( lua_State *L )
+{
+    img_t *img = (img_t*)luaL_checkudata( L, 1, MODULE_MT );
+    
+    if( !lua_isnoneornil( L, 2 ) )
+    {
+        size_t len = 0;
+        const char *format = luaL_checklstring( L, 2, &len );
+        
+        // allocation error
+        if( img_format_copy( img, format, len ) == -1 ){
+            lua_pushnil( L );
+            lua_pushstring( L, strerror( errno ) );
+            return 2;
+        }
+    }
+    
+    lua_pushinteger( L, img->quality );
+    
+    return 1;
+}
+
+
 static int free_lua( lua_State *L )
 {
     img_t *img = (img_t*)luaL_checkudata( L, 1, MODULE_MT );
@@ -617,14 +668,20 @@ static int read_lua( lua_State *L )
         img->size = (img_size_t){ w, h };
         img->bytes = sizeof( DATA32 ) * (size_t)w * (size_t)h;
         img->blob = malloc( img->bytes );
-        if( img->blob ){
-            memcpy( img->blob, ptr, img->bytes );
-            img->quality = 100;
-            img->resize = (img_size_t){ 0, 0 };
-            // set metatable
-            luaL_getmetatable( L, MODULE_MT );
-            lua_setmetatable( L, -2 );
-            return 1;
+        if( img->blob )
+        {
+            // use default file format
+            if( img_format_copy( img, DEFAULT_FORMAT, sizeof( DEFAULT_FORMAT ) ) == 0 ){
+                memcpy( img->blob, ptr, img->bytes );
+                img->quality = 100;
+                img->resize = (img_size_t){ 0, 0 };
+                // set metatable
+                luaL_getmetatable( L, MODULE_MT );
+                lua_setmetatable( L, -2 );
+                return 1;
+            }
+            
+            free( img->blob );
         }
     }
     
@@ -676,6 +733,7 @@ LUALIB_API int luaopen_thumbnailer( lua_State *L )
         { "rawsize", rawsize_lua },
         { "size", size_lua },
         { "quality", quality_lua },
+        { "format", format_lua },
         { "save", save_lua },
         { "saveCrop", save_crop_lua },
         { "saveTrim", save_trim_lua },
