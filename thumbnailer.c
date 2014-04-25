@@ -471,6 +471,18 @@ static int save_aspect_lua( lua_State *L )
     return 1;
 }
 
+
+static int raw_lua( lua_State *L )
+{
+    img_t *img = (img_t*)luaL_checkudata( L, 1, MODULE_MT );
+    
+    if( img->blob ){
+        lua_pushlightuserdata( L, img->blob );
+        lua_pushinteger( L, (lua_Integer)img->bytes );
+        return 2;
+    }
+    
+    lua_pushnil( L );
     
     return 1;
 }
@@ -617,6 +629,7 @@ LUALIB_API int luaopen_thumbnailer( lua_State *L )
     struct luaL_Reg method[] = {
         // method
         { "free", free_lua },
+        { "raw", raw_lua },
         { "rawsize", rawsize_lua },
         { "size", size_lua },
         { "quality", quality_lua },
