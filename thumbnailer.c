@@ -158,8 +158,9 @@ static inline void liberr2errno( ImlibLoadError err )
             errno = ENOSPC;
         break;
         case IMLIB_LOAD_ERROR_NONE:
-        default:
-            errno = 0;
+        case IMLIB_LOAD_ERROR_UNKNOWN:
+        break;
+        //default:
     }
 }
 
