@@ -216,13 +216,13 @@ static int save_lua( lua_State *L )
     // failed
     if( err ){
         liberr2errno( err );
-        lua_pushboolean( L, 0 );
         lua_pushstring( L, strerror(errno) );
         return 2;
     }
-    
     // success
-    lua_pushboolean( L, 1 );
+    else {
+        lua_pushnil( L );
+    }
     
     return 1;
 }
@@ -295,13 +295,12 @@ static int save_crop_lua( lua_State *L )
     // failed
     if( err ){
         liberr2errno( err );
-        lua_pushboolean( L, 0 );
         lua_pushstring( L, strerror(errno) );
-        return 2;
     }
-    
     // success
-    lua_pushboolean( L, 1 );
+    else {
+        lua_pushnil( L );
+    }
     
     return 1;
 }
@@ -349,13 +348,12 @@ static int save_trim_lua( lua_State *L )
     // failed
     if( err ){
         liberr2errno( err );
-        lua_pushboolean( L, 0 );
         lua_pushstring( L, strerror(errno) );
-        return 2;
     }
-    
     // success
-    lua_pushboolean( L, 1 );
+    else {
+        lua_pushnil( L );
+    }
     
     return 1;
 }
@@ -463,13 +461,16 @@ static int save_aspect_lua( lua_State *L )
     // failed
     if( err ){
         liberr2errno( err );
-        lua_pushboolean( L, 0 );
         lua_pushstring( L, strerror(errno) );
-        return 2;
+    }
+    // success
+    else {
+        lua_pushnil( L );
     }
     
-    // success
-    lua_pushboolean( L, 1 );
+    return 1;
+}
+
     
     return 1;
 }
