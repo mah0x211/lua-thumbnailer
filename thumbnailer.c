@@ -116,7 +116,7 @@ typedef struct {
 }while(0)
 
 
-static inline void liberr2errno( int err )
+static inline void liberr2errno( ImlibLoadError err )
 {
     switch( err )
     {
@@ -160,7 +160,7 @@ static inline void liberr2errno( int err )
 
 static int img_load( img_t *img, const char *path )
 {
-    Imlib_Load_Error err = IMLIB_LOAD_ERROR_NONE;
+    ImlibLoadError err = IMLIB_LOAD_ERROR_NONE;
     Imlib_Image imimg = imlib_load_image_with_error_return( path, &err );
     
     if( img )
