@@ -593,6 +593,49 @@ static int load_lua( lua_State *L )
 }
 
 
+static int read_lua( lua_State *L )
+{
+    int w = luaL_checkint( L, 1 );
+    int h = luaL_checkint( L, 2 );
+    const void *ptr = NULL;
+    img_t *img = NULL;
+    
+    // check arguments
+    if( w < 1 ){
+        return luaL_argerror( L, 1, "width must be larger than 0" );
+    }
+    else if( h < 1 ){
+        return luaL_argerror( L, 2, "height must be larger than 0" );
+    }
+    else if( !lua_islightuserdata( L, 3 ) ){
+        return luaL_argerror( L, 3, "data must be type of lightuserdata" );
+    }
+    ptr = lua_topointer( L, 3 );
+    
+    if( ( img = (img_t*)lua_newuserdata( L, sizeof( img_t ) ) ) )
+    {
+        img->size = (img_size_t){ w, h };
+        img->bytes = sizeof( DATA32 ) * (size_t)w * (size_t)h;
+        img->blob = malloc( img->bytes );
+        if( img->blob ){
+            memcpy( img->blob, ptr, img->bytes );
+            img->quality = 100;
+            img->resize = (img_size_t){ 0, 0 };
+            // set metatable
+            luaL_getmetatable( L, MODULE_MT );
+            lua_setmetatable( L, -2 );
+            return 1;
+        }
+    }
+    
+    // got error
+    lua_pushnil( L );
+    lua_pushstring( L, strerror( errno ) );
+    
+    return 2;
+}
+
+
 // module definition register
 static void define_mt( lua_State *L, struct luaL_Reg mmethod[], 
                        struct luaL_Reg method[] )
@@ -644,6 +687,7 @@ LUALIB_API int luaopen_thumbnailer( lua_State *L )
     // method
     lua_newtable( L );
     lstate_fn2tbl( L, "load", load_lua );
+    lstate_fn2tbl( L, "read", read_lua );
     // constants
     // alignments
     lstate_num2tbl( L, "LEFT", IMG_ALIGN_LEFT );
