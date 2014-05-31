@@ -7,6 +7,20 @@ thumbnail image generator.
 
 - Imlib2
 
+## Installation
+
+```sh
+luarocks install --from=http://mah0x211.github.io/rocks/ thumbnail
+```
+
+or 
+
+```sh
+git clone https://github.com/mah0x211/lua-thumbnail.git
+cd lua-thumbnail
+luarocks make
+```
+
 ## Constants
 
 these constants defined at the `thumbnail.*`
